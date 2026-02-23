@@ -1,86 +1,89 @@
-const express=require('express')
-const userRouter=express.Router();
-const fs=require('node:fs')
-const path=require('path');
-const Joi=require('joi')
-const userschema=require('../validations/user.schema.js')
-const sort=require('../utils/sort')
-const filter=require('../utils/filter')
-const paginate=require('../utils/paginate')
+const express = require("express");
+const userRouter = express.Router();
 
-const userfile=path.join(__dirname,'../data/user.json')
+const Joi = require("joi");
+const userschema = require("../validations/user.schema.js");
+const user = require("../models/user");
 
-userRouter.get("/user",(req,res,next)=>{
-    
-    let users = JSON.parse(fs.readFileSync(userfile, 'utf-8'));
-    users = filter(users, 'role', req.query.role);
-    users = sort(users, req.query.sortBy, req.query.order);
-    users = paginate(users, req.query.page, req.query.limit);
+userRouter.get("/user", async (req, res, next) => {
+  try {
+    const {
+      role,
+      sortBy = "createdAt",
+      order = "asc",
+      page = 1,
+      limit = 5,
+    } = req.query;
+    const query = {};
+    if (role) query.role = role;
+    const users = await user
+      .find(query)
+      .sort({ [sortBy]: order === "asc" ? 1 : -1 })
+      .skip((page - 1) * limit)
+      .limit(Number(limit));
+
     res.json(users);
-   
-
-})
-
-userRouter.post('/user', (req, res) => {
-    const { error, value } = userschema.validate(req.body);
-    if (error) return res.status(400).json({ error: error.details[0].message });
-
-    let usersData = [];
-    try {
-        const fileData = fs.readFileSync(userfile, 'utf-8');
-        usersData = fileData ? JSON.parse(fileData) : [];
-    } catch (err) {
-        return res.status(500).json({ error: 'Error reading users file' });
-    }
-
-    const newId = usersData.reduce((maxId, user) => Math.max(maxId, user.id || 0), 0) + 1;
-    const newUser = { id: newId, ...value };
-
-    usersData.push(newUser);
-
-    try {
-        fs.writeFileSync(userfile, JSON.stringify(usersData, null, 2));
-    } catch (err) {
-        return res.status(500).json({ error: 'Error writing users file' });
-    }
-
-    res.status(201).json(newUser);
+  } catch (err) {
+    next(err);
+  }
 });
 
-userRouter.delete("/user/:id",(req,res,next)=>{
-    const user=JSON.parse(fs.readFileSync(userfile,'utf-8'))
-    const id=parseInt(req.params.id)
-    const deleteduser=user.find(item=>item.id===id)
-    if(!deleteduser){
-        return res.status(404).send("id not found")
-    }
-    const updateduser=user.filter(item=>item.id!==id)
-    if(user.length===updateduser.length){
-        return res.status(400).send("id not found")
-    }
-    fs.writeFileSync(userfile,JSON.stringify(updateduser,null,2))
-    res.status(201).json(deleteduser)
-})
+userRouter.post("/user", async (req, res, next) => {
+  try {
+    const { error, value } = userschema.validate(req.body);
+    if (error) return res.status(400).json({ error: error.details[0].message });
+    const [longitude, latitude] = value.location.coordinates;
 
-userRouter.put("/user/:id",(req,res,next)=>{
-    const id=parseInt(req.params.id)
-    const user=JSON.parse(fs.readFileSync(userfile,'utf-8'))
-    const updateduser=user.find(user=>user.id===id)
-   if(!updateduser){
-    return res.status(404).send("user not found")
-   }
-    if(req.body.name!==undefined){
-        updateduser.name=req.body.name
-    }
-    if(req.body.email!==undefined){
-        updateduser.email=req.body.email
-    }
-    if(req.body.role!==undefined){
-        updateduser.role=req.body.role
-    }
-    fs.writeFileSync(userfile,JSON.stringify(user,null,2))
-    res.status(200).json(updateduser)
-})
+    const newuser = await user.create(value);
 
+    const nearbyusers = await user.findOne({
+      _id: { $ne: newuser._id },
+      location: {
+        $near: {
+          $geometry: {
+            type: "Point",
+            coordinates: [longitude, latitude],
+          },
+          $maxDistance: 15000,
+        },
+      },
+    });
+    res.status(201).json({ newuser, nearbyusers });
+  } catch (err) {
+    next(err);
+  }
+});
 
-module.exports=userRouter;
+userRouter.delete("/user/:id", async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const deleteduser = await user.findByIdAndDelete(id);
+    if (!deleteduser) {
+      return res.status(404).json({ message: "user not found" });
+    }
+    res.json(deleteduser);
+  } catch (err) {
+    next(err);
+  }
+});
+
+userRouter.put("/user/:id", async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    const updateduser = await user.findByIdAndUpdate(id, req.body, {
+      new: true,
+      runValidators: true,
+    });
+    if (!updateduser) {
+      return res.status(404).json({ message: "user not found" });
+    }
+    console.log(updateduser.description);
+
+    res.status(200).json(updateduser);
+  } catch (err) {
+    next(err);
+  }
+});
+
+module.exports = userRouter;
