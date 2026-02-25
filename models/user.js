@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const bcrypt = require("bcrypt");
 
 const userschema = new mongoose.Schema(
   {
@@ -15,7 +16,7 @@ const userschema = new mongoose.Schema(
     },
     role: {
       type: String,
-      enum: ["admin", "user", "manager"],
+      enum: ["admin", "member", "user"],
       required: true,
       index: true,
     },
@@ -30,6 +31,11 @@ const userschema = new mongoose.Schema(
         required: true,
       },
     },
+    password: {
+      type: String,
+      required: true,
+      select: false,
+    },
   },
   {
     timestamps: true,
@@ -40,5 +46,18 @@ userschema.index({ location: "2dsphere" });
 userschema.virtual("description").get(function () {
   return this.name + " is " + this.role;
 });
+
+userschema.pre("save", async function (next) {
+  if (!this.isModified("password")) {
+    return next();
+  }
+  const salt = await bcrypt.genSalt(10);
+  this.password = await bcrypt.hash(this.password, salt);
+  next();
+});
+
+userschema.methods.comparepassword = async function (candidatepassword) {
+  return await bcrypt.compare(candidatepassword, this.password);
+};
 
 module.exports = mongoose.model("user", userschema);

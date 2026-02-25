@@ -1,5 +1,7 @@
 const mongoose = require("mongoose");
-
+function arraylimit(val) {
+  return val.length <= 2;
+}
 const taskschema = new mongoose.Schema(
   {
     title: {
@@ -14,11 +16,14 @@ const taskschema = new mongoose.Schema(
       default: "pending",
       index: true,
     },
-    assignedto: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "user",
-      required: true,
-    },
+    assignedto: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "user",
+        required: true,
+        validate: [arraylimit, "cannot assign to more than 2 users"],
+      },
+    ],
     projectId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "project",

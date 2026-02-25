@@ -12,15 +12,18 @@ const projectschema = new mongoose.Schema(
       type: String,
       default: "",
     },
-    managerId: {
+    createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "user",
       required: true,
     },
-    location: {
-      type: { type: String, enum: ["Point"], default: "Point" },
-      coordinates: { type: [Number] },
-    },
+    members: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "user",
+        required: true,
+      },
+    ],
   },
   {
     timestamps: true,
